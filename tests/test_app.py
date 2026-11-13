@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from event_tracker.config import load_config, web_url
+from event_tracker.config import load_config, location_city, web_url
 from event_tracker.crawler import FetchError, Fetcher, MAX_RESPONSE_BYTES, crawl, parse_page
 from event_tracker.store import find_events, save_events
 from event_tracker.web import create_app
@@ -158,6 +158,99 @@ class ApplicationTests(unittest.TestCase):
         events, _ = parse_page(page(startDate="2000-01-01", endDate="2099-01-01"), "https://example.org/", "London")
         save_events(self.db, events)
         self.assertEqual(len(find_events(self.db, ["London"])), 1)
+
+    def local_config(self):
+        return {
+            **self.config,
+            "filter_by_location": True,
+            "cities": [
+                {"name": "Nashville", "regions": ["TN", "Tennessee"],
+                 "sources": ["https://example.org/events"]},
+                {"name": "Lebanon", "regions": ["TN", "Tennessee"], "sources": []},
+                {"name": "Mount Juliet", "regions": ["TN", "Tennessee"],
+                 "localities": ["Mount Juliet", "Mt Juliet", "Mt. Juliet"], "sources": []},
+            ],
+        }
+
+    def test_location_matching_requires_exact_locality_and_region(self):
+        cities = self.local_config()["cities"]
+        for location, expected in (
+            ("Hall, 1 Main Street, Nashville, TN, 37201, US", "Nashville"),
+            ("Hall, Lebanon, Tennessee, US", "Lebanon"),
+            ("Hall, mt. juliet, tn, US", "Mount Juliet"),
+            ("Hall, North Nashville, TN, US", ""),
+            ("Hall, Nashville, GA, US", ""),
+            ("Nashville Music Tour, Atlanta, GA, US", ""),
+            ("Hall, Charleston, SC, US", ""),
+            ("Nashville", ""),
+            ("", ""),
+            ("Hall, Nashville, TN; Hall, Lebanon, TN", ""),
+        ):
+            with self.subTest(location=location):
+                self.assertEqual(location_city(location, cities), expected)
+
+    def test_crawl_filters_recommendations_and_assigns_venue_city(self):
+        config = self.local_config()
+        config["max_depth"] = 0
+        html = "".join(page(name=name, location={
+            "address": {"addressLocality": locality, "addressRegion": region}
+        }) for name, locality, region in (
+            ("Local", "Nashville", "TN"),
+            ("Other configured city", "Lebanon", "TN"),
+            ("Alias", "Mt. Juliet", "Tennessee"),
+            ("Distant", "Atlanta", "GA"),
+            ("Wrong state", "Lebanon", "PA"),
+        )) + page(name="Online", location=None)
+        fetcher = Mock(delay=1)
+        fetcher.fetch.side_effect = lambda url, allowed=None: (
+            ("User-agent: *\nDisallow:", url) if url.endswith("/robots.txt") else (html, url)
+        )
+        self.assertEqual(crawl(config, self.db, fetcher), (3, 0))
+        events = find_events(self.db, [city["name"] for city in config["cities"]])
+        self.assertEqual({event["title"]: event["city"] for event in events}, {
+            "Local": "Nashville", "Other configured city": "Lebanon", "Alias": "Mount Juliet",
+        })
+
+    def test_web_filters_and_reclassifies_existing_records_without_duplicates(self):
+        config = self.local_config()
+        self.config_path.write_text(json.dumps(config))
+        for city in ("Nashville", "Lebanon"):
+            events, _ = parse_page(page(name="Local concert", location={
+                "name": "Hall", "address": {"addressLocality": "Lebanon", "addressRegion": "TN"},
+            }), "https://example.org/events", city)
+            save_events(self.db, events)
+        for title, location in (("Distant concert", "Hall, Atlanta, GA"), ("Online concert", "")):
+            events, _ = parse_page(page(name=title, location=location), "https://example.org/", "Lebanon")
+            save_events(self.db, events)
+        client = create_app(self.config_path, self.db).test_client()
+        body = client.get("/?city=Lebanon&q=concert").get_data(as_text=True)
+        self.assertIn("1 event shown", body)
+        self.assertIn("Local concert", body)
+        self.assertNotIn("Distant concert", body)
+        self.assertNotIn("Online concert", body)
+        self.assertIn("No events found", client.get("/?city=Nashville").get_data(as_text=True))
+        self.assertEqual(len(find_events(self.db, ["Nashville", "Lebanon"])), 4)
+
+    def test_location_filter_is_applied_before_result_limit(self):
+        config = self.local_config()
+        events, _ = parse_page(page(location="Hall, Atlanta, GA"), "https://example.org/", "Nashville")
+        distant = [{**events[0], "title": f"A distant {i}"} for i in range(501)]
+        local = {**events[0], "title": "Z local", "location": "Hall, Nashville, TN"}
+        save_events(self.db, distant + [local])
+        found = find_events(self.db, ["Nashville"], location_cities=config["cities"])
+        self.assertEqual([event["title"] for event in found], ["Z local"])
+
+    def test_location_filter_configuration_is_validated(self):
+        config = self.local_config()
+        for changes in (
+            {"filter_by_location": "true"},
+            {"cities": [{"name": "Nashville", "sources": []}]},
+            {"cities": [{"name": "Nashville", "sources": [], "regions": "TN"}]},
+            {"cities": [{"name": "Nashville", "sources": [], "regions": ["TN"], "localities": []}]},
+        ):
+            self.config_path.write_text(json.dumps({**config, **changes}))
+            with self.assertRaises(ValueError):
+                load_config(self.config_path)
 
     def test_web_renders_pictures_locations_links_and_escapes_content(self):
         events, _ = parse_page(page(), "https://example.org/events", "London")

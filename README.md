@@ -12,6 +12,17 @@ them with real event listing pages before crawling.** Each source is assigned to
 its configured city. Include sources covering surrounding towns, or add towns as
 separate entries; there is no automatic radius/geographic search.
 
+For aggregators such as Eventbrite, enable `"filter_by_location": true` to
+exclude distant recommendations and events with no verifiable local venue.
+Add `"regions": ["TN", "Tennessee"]` to each city, and optionally
+`"localities": ["Mount Juliet", "Mt Juliet", "Mt. Juliet"]` for spelling aliases.
+The venue's comma-separated locality and region must match consecutive address
+components exactly (ignoring case, whitespace, and punctuation). Missing,
+ambiguous, online-only, or out-of-area locations are excluded. Events are assigned
+to the matching configured city rather than the source's city. This also filters
+and reclassifies existing records on web requests, without deleting stored data.
+The default is false, preserving source-based city assignment.
+
 ```json
 {
   "cities": [
