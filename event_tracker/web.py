@@ -34,7 +34,10 @@ def create_app(config_path=None, db_path=None):
         city = request.args.get("city", "")
         query = request.args.get("q", "")[:200]
         include_past = request.args.get("past") == "1"
-        events = find_events(path, cities, city, query, include_past)
+        events = find_events(
+            path, cities, city, query, include_past,
+            location_cities=config["cities"] if config.get("filter_by_location") else None,
+        )
         return render_template(
             "index.html", events=events, cities=cities, city=city, query=query, include_past=include_past
         )

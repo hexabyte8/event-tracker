@@ -12,7 +12,7 @@ from urllib.robotparser import RobotFileParser
 
 from bs4 import BeautifulSoup, UnicodeDammit
 
-from .config import web_url
+from .config import location_city, web_url
 from .store import save_events
 
 LOGGER = logging.getLogger(__name__)
@@ -232,6 +232,13 @@ def crawl(config, db_path, fetcher=None):
                     if not robots.can_fetch(USER_AGENT, final_url):
                         continue
                     events, links = parse_page(html, final_url, city["name"])
+                    if config.get("filter_by_location"):
+                        local_events = []
+                        for event in events:
+                            event["city"] = location_city(event["location"], config["cities"])
+                            if event["city"]:
+                                local_events.append(event)
+                        events = local_events
                     save_events(db_path, events)
                     count += len(events)
                     if depth < config["max_depth"]:
