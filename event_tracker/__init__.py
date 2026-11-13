@@ -1,0 +1,1 @@
+"""City-configurable event discovery."""

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Event Tracker — Find things to do</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Find your next day out</h1>
+      <p>Events and things to do in and around your configured cities.</p>
+    </header>
+    <form method="get" class="filters">
+      <label>City
+        <select name="city">
+          <option value="">All cities</option>
+          {% for name in cities %}
+          <option value="{{ name }}" {% if city == name %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Search <input type="search" name="q" value="{{ query }}" maxlength="200" placeholder="Music, markets, exhibitions…"></label>
+      <label class="checkbox"><input type="checkbox" name="past" value="1" {% if include_past %}checked{% endif %}> Include past events</label>
+      <button type="submit">Find events</button>
+    </form>
+    <p>{{ events|length }} event{% if events|length != 1 %}s{% endif %} shown (up to 500).</p>
+    <section class="events" aria-label="Events">
+      {% for event in events %}
+      <article>
+        {% if event.image_url %}
+        <img src="{{ event.image_url }}" alt="Picture for {{ event.title }}" loading="lazy" referrerpolicy="no-referrer">
+        {% endif %}
+        <div class="details">
+          <p class="city">{{ event.city }}</p>
+          <h2>{{ event.title }}</h2>
+          <p><strong>When:</strong> {% if event.start_date %}<time datetime="{{ event.start_date }}">{{ event.start_date|replace('T', ' ') }}</time>{% else %}Check source for dates{% endif %}</p>
+          {% if event.end_date %}<p><strong>Until:</strong> <time datetime="{{ event.end_date }}">{{ event.end_date|replace('T', ' ') }}</time></p>{% endif %}
+          <p><strong>Where:</strong> {{ event.location or 'Check source for location' }}</p>
+          {% if event.location %}
+          <a href="https://www.openstreetmap.org/search?query={{ event.location|urlencode }}" target="_blank" rel="noopener noreferrer">Find location on map</a>
+          {% endif %}
+          <p class="description">{{ event.description }}</p>
+          <nav aria-label="Links for {{ event.title }}">
+            <a href="{{ event.event_url }}" target="_blank" rel="noopener noreferrer">Event details</a>
+            <a href="{{ event.source_url }}" target="_blank" rel="noopener noreferrer">Original source</a>
+          </nav>
+        </div>
+      </article>
+      {% else %}
+      <p class="empty">No events found. Try another city or search. If this is a new installation, configure event sources and run the crawler first.</p>
+      {% endfor %}
+    </section>
+    <footer>Details can change. Please confirm dates, venue, and availability with the original source. Pictures are loaded from source websites.</footer>
+  </main>
+</body>
+</html>

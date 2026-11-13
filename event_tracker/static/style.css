@@ -1,0 +1,21 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #162a3a; background: #f4f7fa; }
+body { margin: 0; }
+main { max-width: 1200px; margin: auto; padding: 2rem 1rem; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); margin-bottom: .5rem; }
+header p, footer { color: #475569; }
+.filters { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; background: white; padding: 1.25rem; border-radius: .75rem; }
+label { display: flex; flex-direction: column; gap: .35rem; }
+input, select, button { font: inherit; padding: .65rem; border: 1px solid #94a3b8; border-radius: .3rem; }
+.checkbox { flex-direction: row; align-items: center; padding: .7rem 0; }
+button { background: #164e63; color: white; cursor: pointer; }
+a { color: #075985; text-underline-offset: .2rem; }
+.events { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 1.5rem; }
+article { background: white; border: 1px solid #dbe4eb; border-radius: .75rem; overflow: hidden; }
+article img { width: 100%; height: 220px; object-fit: cover; }
+.details { padding: 1.25rem; overflow-wrap: anywhere; }
+.city { color: #475569; font-weight: 600; margin-top: 0; }
+h2 { font-size: 1.3rem; }
+.description { white-space: pre-line; max-height: 12rem; overflow: auto; }
+nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+.empty { padding: 2rem; background: white; border-radius: .75rem; }
+footer { margin-top: 2rem; font-size: .9rem; }
