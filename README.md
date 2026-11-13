@@ -93,11 +93,15 @@ preserves the data; `down -v` deletes it. Containers run as UID/GID 10001.
 The manifests provide a ConfigMap, persistent volume claim, single-replica
 Deployment, ClusterIP Service, and a crawler CronJob (every six hours).
 
-1. Build and publish the image to **your** registry:
-   `docker build -t REGISTRY/event-tracker:VERSION .`
+1. A GitHub Actions workflow (`.github/workflows/docker-publish.yml`) builds
+   the image on every push to `main` and publishes it to
+   `ghcr.io/hexabyte8/event-tracker` (tagged `latest`, by branch, by semver
+   tag, and by commit SHA). To publish elsewhere instead, build and push
+   manually: `docker build -t REGISTRY/event-tracker:VERSION .`
    and `docker push REGISTRY/event-tracker:VERSION`.
 2. Replace `event-tracker:local` in both `k8s/app.yaml` and `k8s/crawler.yaml`
-   with that image (configure image pull credentials separately if needed).
+   with the published image, e.g. `ghcr.io/hexabyte8/event-tracker:latest`
+   (configure image pull credentials separately if the package is private).
    For kind/minikube, load the local image into the cluster instead.
 3. Replace the placeholder sources/cities in `k8s/configmap.yaml`.
 4. Deploy and run the initial crawl:
