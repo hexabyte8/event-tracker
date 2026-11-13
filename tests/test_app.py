@@ -72,6 +72,24 @@ class ApplicationTests(unittest.TestCase):
         events, _ = parse_page(json.dumps([{"@type": "Event", "name": "Market"}]), "https://example.org/", "London")
         self.assertEqual(events[0]["title"], "Market")
 
+    def test_canonical_event_id_deduplicates_listing_and_detail_pages(self):
+        html = page(url=None, **{"@id": "https://example.org/concert"})
+        for source in ("https://example.org/listing", "https://example.org/detail"):
+            events, _ = parse_page(html, source, "London")
+            save_events(self.db, events)
+        saved = find_events(self.db, ["London"])
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["event_url"], "https://example.org/concert")
+        self.assertEqual(saved[0]["source_url"], "https://example.org/detail")
+
+    def test_basic_and_week_dates_are_normalized_before_filtering(self):
+        for value in ("20000101", "2000-W01-1", "20000101T190000Z"):
+            events, _ = parse_page(page(startDate=value), "https://example.org/", "London")
+            self.assertTrue(events[0]["start_date"].startswith("2000-01-"))
+            save_events(self.db, events)
+        self.assertEqual(find_events(self.db, ["London"]), [])
+        self.assertEqual(len(find_events(self.db, ["London"], include_past=True)), 3)
+
     def test_crawl_respects_robots_bounds_and_multiple_cities(self):
         requested = []
 
@@ -186,11 +204,11 @@ class NetworkSafetyTests(unittest.TestCase):
             with self.assertRaises(FetchError):
                 Fetcher(0).fetch("https://example.org/")
 
-    def response(self, status=200, body=b"<html></html>", location=None):
+    def response(self, status=200, body=b"<html></html>", location=None, content_type="text/html"):
         response = Mock()
         response.status = status
         response.getheader.side_effect = lambda name, default=None: {
-            "Content-Type": "text/html",
+            "Content-Type": content_type,
             "Location": location,
         }.get(name, default)
         response.read.return_value = body
@@ -235,6 +253,23 @@ class NetworkSafetyTests(unittest.TestCase):
         connection_class.return_value.getresponse.return_value = self.response(body=b"x" * (MAX_RESPONSE_BYTES + 1))
         with self.assertRaises(FetchError):
             Fetcher(0).fetch("https://example.org/")
+
+    @patch("event_tracker.crawler.http.client.HTTPSConnection")
+    @patch("event_tracker.crawler.socket.getaddrinfo")
+    def test_http_charset_and_html_metadata_preserve_event_text(self, resolve, connection_class):
+        resolve.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        html = page(name="Café", location="Théâtre").replace("\\u00e9", "é").replace("\\u00e2", "â")
+        for content_type, prefix in (
+            ("text/html; charset=iso-8859-1", ""),
+            ("text/html", '<meta charset="iso-8859-1">'),
+        ):
+            connection_class.return_value.getresponse.return_value = self.response(
+                body=(prefix + html).encode("iso-8859-1"), content_type=content_type
+            )
+            body, url = Fetcher(0).fetch("https://example.org/")
+            events, _ = parse_page(body, url, "London")
+            self.assertEqual(events[0]["title"], "Café")
+            self.assertEqual(events[0]["location"], "Théâtre")
 
 
 if __name__ == "__main__":

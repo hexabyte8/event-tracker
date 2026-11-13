@@ -5,11 +5,12 @@ import logging
 import socket
 import time
 from collections import deque
-from datetime import datetime
+from datetime import date, datetime
+from email.message import Message
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, UnicodeDammit
 
 from .config import web_url
 from .store import save_events
@@ -83,13 +84,23 @@ class Fetcher:
                     return None, url
                 if response.status != 200:
                     raise FetchError(f"HTTP {response.status}")
-                content_type = response.getheader("Content-Type", "").split(";")[0].lower()
+                content_header = Message()
+                content_header["Content-Type"] = response.getheader("Content-Type", "")
+                content_type = content_header.get_content_type()
                 if content_type not in ("text/html", "application/xhtml+xml", "application/ld+json", "application/json", "text/plain"):
                     raise FetchError("Unsupported content type.")
                 body = response.read(MAX_RESPONSE_BYTES + 1)
                 if len(body) > MAX_RESPONSE_BYTES:
                     raise FetchError("Response exceeds size limit.")
-                return body.decode("utf-8", errors="replace"), url
+                charset = content_header.get_content_charset()
+                decoded = UnicodeDammit(
+                    body,
+                    known_definite_encodings=[charset] if charset else [],
+                    is_html=content_type in ("text/html", "application/xhtml+xml"),
+                ).unicode_markup
+                if decoded is None:
+                    raise FetchError("Unable to decode response.")
+                return decoded, url
             finally:
                 connection.close()
         raise FetchError("Too many redirects.")
@@ -103,10 +114,12 @@ def date_text(value):
     if not isinstance(value, str):
         return ""
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return value
+        return date.fromisoformat(value).isoformat()
     except ValueError:
-        return ""
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).isoformat()
+        except ValueError:
+            return ""
 
 
 def nodes(value):
@@ -170,7 +183,11 @@ def parse_page(html, source_url, city):
                 "description": text(item.get("description")),
                 "location": location_text(item.get("location")),
                 "image_url": web_url(image, source_url),
-                "event_url": web_url(item.get("url"), source_url) or source_url,
+                "event_url": (
+                    web_url(item.get("url"), source_url)
+                    or web_url(item.get("@id"), source_url)
+                    or source_url
+                ),
                 "source_url": source_url,
             })
     links = [web_url(link.get("href"), source_url) for link in soup.find_all("a", href=True)]
