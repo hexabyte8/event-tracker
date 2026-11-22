@@ -37,6 +37,7 @@ def create_app(config_path=None, db_path=None):
         events = find_events(
             path, cities, city, query, include_past,
             location_cities=config["cities"] if config.get("filter_by_location") else None,
+            excluded_keywords=config["excluded_keywords"],
         )
         return render_template(
             "index.html", events=events, cities=cities, city=city, query=query, include_past=include_past

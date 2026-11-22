@@ -51,7 +51,10 @@ def save_events(path, events):
         """, events)
 
 
-def find_events(path, cities, city="", query="", include_past=False, location_cities=None):
+def find_events(
+    path, cities, city="", query="", include_past=False, location_cities=None,
+    excluded_keywords=(),
+):
     if city and city not in cities:
         return []
     selected = [city] if city else cities
@@ -67,12 +70,19 @@ def find_events(path, cities, city="", query="", include_past=False, location_ci
     if not include_past:
         sql += " AND (start_date = '' OR substr(COALESCE(NULLIF(end_date, ''), start_date), 1, 10) >= date('now'))"
     sql += " ORDER BY start_date = '', start_date, title"
-    if location_cities is None:
+    keywords = [keyword.casefold() for keyword in excluded_keywords]
+    if location_cities is None and not keywords:
         sql += " LIMIT 500"
     with database(path) as connection:
         results, seen = [], set()
         for row in connection.execute(sql, parameters):
             event = dict(row)
+            if keywords and any(
+                keyword in event[field].casefold()
+                for keyword in keywords
+                for field in ("title", "description")
+            ):
+                continue
             if location_cities is not None:
                 event["city"] = location_city(event["location"], location_cities)
                 if event["city"] not in selected:
