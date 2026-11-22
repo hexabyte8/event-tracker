@@ -23,11 +23,22 @@ to the matching configured city rather than the source's city. This also filters
 and reclassifies existing records on web requests, without deleting stored data.
 The default is false, preserving source-based city assignment.
 
+To hide events containing unwanted words or phrases, set
+`"excluded_keywords": ["stripper", "explicit"]` in the configuration. Matching
+is case-insensitive and checks for literal substrings in event titles and
+descriptions, so "stripper" also matches "strippers". Choose keywords carefully:
+unrelated events can match, and events without those words will not be detected.
+The default is an empty list. Exclusions apply to existing and newly crawled
+events in the web interface before the 500-result limit; they do not prevent
+crawling or delete stored records. Changing the list takes effect on the next
+web request.
+
 ```json
 {
   "cities": [
     {"name": "Your city", "sources": ["https://your-event-website.org/whats-on"]}
   ],
+  "excluded_keywords": ["stripper", "explicit"],
   "max_pages_per_source": 25,
   "max_depth": 1,
   "request_delay_seconds": 1

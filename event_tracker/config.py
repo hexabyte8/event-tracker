@@ -37,6 +37,12 @@ def load_config(path=None):
     filter_by_location = config.get("filter_by_location", False)
     if not isinstance(filter_by_location, bool):
         raise ValueError("filter_by_location must be a boolean.")
+    excluded_keywords = config.get("excluded_keywords", [])
+    if not isinstance(excluded_keywords, list) or any(
+        not isinstance(keyword, str) or not keyword.strip() for keyword in excluded_keywords
+    ):
+        raise ValueError("excluded_keywords must be a list of nonempty strings.")
+    config["excluded_keywords"] = [keyword.strip() for keyword in excluded_keywords]
     for city in cities:
         if not isinstance(city, dict):
             raise ValueError("Each city must be an object.")

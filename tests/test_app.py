@@ -252,6 +252,42 @@ class ApplicationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_config(self.config_path)
 
+    def test_keyword_exclusions_apply_to_existing_events_and_config_changes(self):
+        for title, description in (
+            ("STRIPPERS show", "Entertainment"),
+            ("Late show", "Contains EXPLICIT material"),
+            ("Family show", "Live music"),
+        ):
+            events, _ = parse_page(page(name=title, description=description), "https://example.org/", "London")
+            save_events(self.db, events)
+        client = create_app(self.config_path, self.db).test_client()
+        self.assertIn("STRIPPERS show", client.get("/").get_data(as_text=True))
+        self.config["excluded_keywords"] = [" stripper ", "explicit"]
+        self.config_path.write_text(json.dumps(self.config))
+        body = client.get("/?city=London&q=show&past=1").get_data(as_text=True)
+        self.assertIn("Family show", body)
+        self.assertNotIn("STRIPPERS show", body)
+        self.assertNotIn("Late show", body)
+        self.assertEqual(len(find_events(self.db, ["London"])), 3)
+        self.config["excluded_keywords"] = []
+        self.config_path.write_text(json.dumps(self.config))
+        self.assertIn("Late show", client.get("/").get_data(as_text=True))
+
+    def test_keyword_exclusions_are_literal_unicode_case_insensitive_and_before_limit(self):
+        events, _ = parse_page(page(), "https://example.org/", "London")
+        excluded = [{**events[0], "title": f"A STRASSE event {i}"} for i in range(501)]
+        allowed = {**events[0], "title": "Z family event", "description": "100% fun"}
+        save_events(self.db, excluded + [allowed])
+        found = find_events(self.db, ["London"], excluded_keywords=["straße", "_"])
+        self.assertEqual([event["title"] for event in found], ["Z family event"])
+        self.assertEqual(find_events(self.db, ["London"], excluded_keywords=["straße", "%"]), [])
+
+    def test_keyword_exclusion_configuration_is_validated(self):
+        for value in ("explicit", None, [""], ["  "], [1]):
+            self.config_path.write_text(json.dumps({**self.config, "excluded_keywords": value}))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                load_config(self.config_path)
+
     def test_web_renders_pictures_locations_links_and_escapes_content(self):
         events, _ = parse_page(page(), "https://example.org/events", "London")
         events[0]["title"] = '<script>alert("x")</script>'
